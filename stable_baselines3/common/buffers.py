@@ -387,18 +387,27 @@ class RolloutBuffer(BaseBuffer):
         :param last_values: state value estimation for the last step (one for each env)
         :param dones: if the last step was a terminal step (one bool for each env).
         """
+
+        """
+        edited for n-step return
+        
+        sum the discounted rewards from t to n subtract v at t add v at t+n times gamma to the n
+        """
         # Convert to numpy
         last_values = last_values.clone().cpu().numpy().flatten()
-
+        n = 4
         last_gae_lam = 0
+        step_gamma = np.array([self.gamma ** i for i in range(n)])
         for step in reversed(range(self.buffer_size)):
-            if step == self.buffer_size - 1:
+            if step >= self.buffer_size - 1 - n:
                 next_non_terminal = 1.0 - dones
                 next_values = last_values
+                step_gamma_use = step_gamma[0: self.buffer_size - step]
             else:
-                next_non_terminal = 1.0 - self.episode_starts[step + 1]
-                next_values = self.values[step + 1]
-            delta = self.rewards[step] + self.gamma * next_values * next_non_terminal - self.values[step]
+                next_non_terminal = 1.0 - self.episode_starts[step + 1 + n]
+                next_values = self.values[step + 1 + n]
+                step_gamma_use = step_gamma
+            delta = np.dot(step_gamma_use, self.rewards[step: step + n]) + self.gamma * next_values * next_non_terminal - self.values[step]
             last_gae_lam = delta + self.gamma * self.gae_lambda * next_non_terminal * last_gae_lam
             self.advantages[step] = last_gae_lam
         # TD(lambda) estimator, see Github PR #375 or "Telescoping in TD(lambda)"
